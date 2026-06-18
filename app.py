@@ -93,13 +93,25 @@ def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings
     with st.sidebar:
         st.header("Azure Configuration")
         openai_endpoint = st.text_input("Azure OpenAI Endpoint", value=env_openai.endpoint)
-        openai_key = st.text_input("Azure OpenAI API Key", value=env_openai.api_key, type="password")
+        openai_key_input = st.text_input(
+            "Azure OpenAI API Key",
+            value="",
+            type="password",
+            placeholder="Loaded from .env" if env_openai.api_key else "Enter API key",
+            help="Leave blank to use AZURE_OPENAI_API_KEY from .env.",
+        )
         deployment_name = st.text_input("Deployment Name", value=env_openai.deployment_name)
         openai_api_version = st.text_input("Azure OpenAI API Version", value=env_openai.api_version)
 
         with st.expander("Content Understanding", expanded=True):
             content_endpoint = st.text_input("Content Understanding Endpoint", value=env_content.endpoint)
-            content_key = st.text_input("Content Understanding Key", value=env_content.key, type="password")
+            content_key_input = st.text_input(
+                "Content Understanding Key",
+                value="",
+                type="password",
+                placeholder="Loaded from .env" if env_content.key else "Optional key",
+                help="Leave blank to use CONTENTUNDERSTANDING_KEY from .env or DefaultAzureCredential.",
+            )
             analyzer_id = st.text_input("Analyzer ID", value=env_content.analyzer_id)
             content_api_version = st.text_input("Content Understanding API Version", value=env_content.api_version)
 
@@ -107,13 +119,13 @@ def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings
 
     openai_settings = AzureOpenAISettings(
         endpoint=openai_endpoint,
-        api_key=openai_key,
+        api_key=openai_key_input.strip() or env_openai.api_key,
         deployment_name=deployment_name,
         api_version=openai_api_version,
     )
     content_settings = ContentUnderstandingSettings(
         endpoint=content_endpoint,
-        key=content_key,
+        key=content_key_input.strip() or env_content.key,
         analyzer_id=analyzer_id,
         api_version=content_api_version,
     )
@@ -246,6 +258,11 @@ def _inject_theme(dark_mode: bool) -> None:
             border-color: var(--ats-border) !important;
         }}
 
+        [data-testid="stSidebar"] input[type="password"] + div,
+        [data-testid="stSidebar"] [data-baseweb="input"] button {{
+            display: none !important;
+        }}
+
         input::placeholder,
         textarea::placeholder {{
             color: var(--ats-muted) !important;
@@ -270,6 +287,10 @@ def _inject_theme(dark_mode: bool) -> None:
         [data-testid="stFileUploaderDropzone"] button {{
             background: var(--ats-surface-alt) !important;
             border: 1px solid var(--ats-border) !important;
+            color: var(--ats-text) !important;
+        }}
+
+        [data-testid="stFileUploaderDropzone"] button * {{
             color: var(--ats-text) !important;
         }}
 
@@ -326,6 +347,11 @@ def _inject_theme(dark_mode: bool) -> None:
             min-height: 44px;
         }}
 
+        .stButton > button *,
+        .stDownloadButton > button * {{
+            color: var(--ats-button-text) !important;
+        }}
+
         .stButton > button:hover,
         .stDownloadButton > button:hover {{
             background: var(--ats-accent-hover) !important;
@@ -337,6 +363,11 @@ def _inject_theme(dark_mode: bool) -> None:
         .stDownloadButton > button:disabled {{
             background: var(--ats-surface-alt) !important;
             border-color: var(--ats-border) !important;
+            color: var(--ats-muted) !important;
+        }}
+
+        .stButton > button:disabled *,
+        .stDownloadButton > button:disabled * {{
             color: var(--ats-muted) !important;
         }}
 
