@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from openai import AzureOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AzureOpenAI, RateLimitError
 from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from models.ats_report import (
     ATSReport,
@@ -27,6 +27,14 @@ from utils.prompts import (
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+def _is_retryable_openai_error(exc: BaseException) -> bool:
+    if isinstance(exc, APIConnectionError | APITimeoutError | RateLimitError):
+        return True
+    if isinstance(exc, APIStatusError):
+        return exc.status_code >= 500
+    return False
 
 
 @dataclass(slots=True)
@@ -68,7 +76,12 @@ class AzureJSONClient:
             )
         return self._client
 
-    @retry(wait=wait_exponential(multiplier=1, min=1, max=8), stop=stop_after_attempt(3))
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception(_is_retryable_openai_error),
+        reraise=True,
+    )
     def generate_json(
         self,
         *,

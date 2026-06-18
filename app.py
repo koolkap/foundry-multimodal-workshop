@@ -12,6 +12,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
+from openai import APIStatusError
+from tenacity import RetryError
 
 from models.ats_report import ATSReport, CareerRecommendation, JobDescriptionAnalysis, ResumeData, SkillAnalysis
 from services.ats_agent import ATSAgent, AzureOpenAISettings
@@ -152,7 +154,72 @@ def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings
         analyzer_id=analyzer_id,
         api_version=content_api_version,
     )
+    with st.sidebar:
+        _render_configuration_status(openai_settings, content_settings)
     return openai_settings, content_settings, dark_mode
+
+
+def _render_configuration_status(
+    openai_settings: AzureOpenAISettings,
+    content_settings: ContentUnderstandingSettings,
+) -> None:
+    errors = _configuration_errors(openai_settings, content_settings)
+    if errors:
+        for error in errors:
+            st.error(error)
+        return
+    if openai_settings.is_configured:
+        st.success("Azure OpenAI configuration is ready.")
+
+
+def _configuration_errors(
+    openai_settings: AzureOpenAISettings,
+    content_settings: ContentUnderstandingSettings,
+) -> list[str]:
+    errors: list[str] = []
+    openai_endpoint = openai_settings.endpoint.strip()
+    content_endpoint = content_settings.endpoint.strip()
+
+    if not openai_endpoint:
+        errors.append("Azure OpenAI Endpoint is required.")
+    elif _is_foundry_services_endpoint(openai_endpoint):
+        errors.append(
+            "Azure OpenAI Endpoint is set to a Foundry project or Content Understanding endpoint. "
+            "Use the Azure OpenAI endpoint instead, for example https://<resource-name>.openai.azure.com/."
+        )
+    elif not _is_azure_openai_endpoint(openai_endpoint):
+        errors.append(
+            "Azure OpenAI Endpoint must end with .openai.azure.com. "
+            "Use the value shown as Azure OpenAI endpoint in Azure AI Foundry."
+        )
+
+    if content_endpoint and _normalize_endpoint(openai_endpoint) == _normalize_endpoint(content_endpoint):
+        errors.append(
+            "Azure OpenAI Endpoint and Content Understanding Endpoint are identical. "
+            "They must be different resources/endpoints."
+        )
+
+    if not openai_settings.deployment_name.strip():
+        errors.append("Deployment Name is required and must match the exact Azure OpenAI model deployment name.")
+
+    if not openai_settings.api_key.strip():
+        errors.append("Azure OpenAI API key is required. Put AZURE_OPENAI_API_KEY in .env or enable manual override.")
+
+    return errors
+
+
+def _normalize_endpoint(endpoint: str) -> str:
+    return endpoint.strip().rstrip("/").lower()
+
+
+def _is_azure_openai_endpoint(endpoint: str) -> bool:
+    normalized = _normalize_endpoint(endpoint)
+    return normalized.startswith("https://") and normalized.endswith(".openai.azure.com")
+
+
+def _is_foundry_services_endpoint(endpoint: str) -> bool:
+    normalized = _normalize_endpoint(endpoint)
+    return normalized.endswith(".services.ai.azure.com")
 
 
 def _inject_theme(dark_mode: bool) -> None:
@@ -424,6 +491,10 @@ def _run_resume_extraction(
     if not openai_settings.is_configured:
         st.error("Azure OpenAI endpoint, API key, and deployment name are required.")
         return False
+    if errors := _configuration_errors(openai_settings, content_settings):
+        for error in errors:
+            st.error(error)
+        return False
 
     try:
         with st.spinner("Extracting resume with Azure Content Understanding and GPT..."):
@@ -448,7 +519,7 @@ def _run_resume_extraction(
             st.info(warning)
         return True
     except Exception as exc:  # noqa: BLE001 - Streamlit should display recoverable service errors.
-        st.error(f"Resume extraction failed: {exc}")
+        st.error(f"Resume extraction failed: {_format_service_error(exc)}")
         return False
 
 
@@ -468,6 +539,10 @@ def _run_ats_analysis(job_description: str, openai_settings: AzureOpenAISettings
         return
     if not openai_settings.is_configured:
         st.error("Azure OpenAI endpoint, API key, and deployment name are required.")
+        return
+    if errors := _configuration_errors(openai_settings, ContentUnderstandingSettings()):
+        for error in errors:
+            st.error(error)
         return
 
     resume: ResumeData = st.session_state.resume_data
@@ -495,12 +570,16 @@ def _run_ats_analysis(job_description: str, openai_settings: AzureOpenAISettings
             _add_history(resume, ats_report, job_analysis)
         st.success("ATS analysis complete.")
     except Exception as exc:  # noqa: BLE001
-        st.error(f"ATS analysis failed: {exc}")
+        st.error(f"ATS analysis failed: {_format_service_error(exc)}")
 
 
 def _run_recommendations(openai_settings: AzureOpenAISettings) -> None:
     if not openai_settings.is_configured:
         st.error("Azure OpenAI endpoint, API key, and deployment name are required.")
+        return
+    if errors := _configuration_errors(openai_settings, ContentUnderstandingSettings()):
+        for error in errors:
+            st.error(error)
         return
 
     resume: ResumeData = st.session_state.resume_data
@@ -522,7 +601,33 @@ def _run_recommendations(openai_settings: AzureOpenAISettings) -> None:
             st.session_state.career_recommendation = career_recommendation
         st.success("Recommendations generated.")
     except Exception as exc:  # noqa: BLE001
-        st.error(f"Recommendation generation failed: {exc}")
+        st.error(f"Recommendation generation failed: {_format_service_error(exc)}")
+
+
+def _format_service_error(exc: Exception) -> str:
+    root: BaseException = exc
+    if isinstance(exc, RetryError) and exc.last_attempt:
+        retry_exc = exc.last_attempt.exception()
+        if retry_exc:
+            root = retry_exc
+
+    if isinstance(root, APIStatusError):
+        status_code = root.status_code
+        message = str(root)
+        if status_code == 404:
+            return (
+                "Azure OpenAI returned 404 Not Found. Check that the Azure OpenAI Endpoint is the GPT resource "
+                "endpoint, the Deployment Name exactly matches your deployed model, and the API key belongs to "
+                f"that resource. Details: {message}"
+            )
+        if status_code in {401, 403}:
+            return (
+                "Azure OpenAI authentication failed. Check that the API key belongs to the configured endpoint. "
+                f"Details: {message}"
+            )
+        return f"Azure service returned HTTP {status_code}. Details: {message}"
+
+    return f"{root.__class__.__name__}: {root}"
 
 
 def _render_resume_tabs(resume: ResumeData, skill_analysis: SkillAnalysis | None) -> None:
