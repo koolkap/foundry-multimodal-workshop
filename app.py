@@ -12,11 +12,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
-from openai import APIStatusError
-from tenacity import RetryError
 
 from models.ats_report import ATSReport, CareerRecommendation, JobDescriptionAnalysis, ResumeData, SkillAnalysis
-from services.ats_agent import ATSAgent, AzureOpenAISettings
+from services.ats_agent import ATSAgent
 from services.document_processor import ContentUnderstandingSettings, DocumentProcessor
 from services.jd_matcher import JDMatcher
 
@@ -31,7 +29,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     _init_session_state()
-    openai_settings, content_settings, dark_mode = _render_sidebar()
+    content_settings, dark_mode = _render_sidebar()
     _inject_theme(dark_mode)
 
     st.title("ATS Resume Intelligence Agent")
@@ -48,15 +46,15 @@ def main() -> None:
     recommend_clicked = action_col_3.button("Generate Recommendations", use_container_width=True)
 
     if extract_clicked:
-        _run_resume_extraction(resume_file, openai_settings, content_settings)
+        _run_resume_extraction(resume_file, content_settings)
 
     if analyze_clicked:
-        if _ensure_resume_available(resume_file, openai_settings, content_settings):
-            _run_ats_analysis(job_description, openai_settings)
+        if _ensure_resume_available(resume_file, content_settings):
+            _run_ats_analysis(job_description)
 
     if recommend_clicked:
-        if _ensure_resume_available(resume_file, openai_settings, content_settings):
-            _run_recommendations(openai_settings)
+        if _ensure_resume_available(resume_file, content_settings):
+            _run_recommendations()
 
     resume: ResumeData | None = st.session_state.get("resume_data")
     skill_analysis: SkillAnalysis | None = st.session_state.get("skill_analysis")
@@ -88,66 +86,37 @@ def _init_session_state() -> None:
         st.session_state.setdefault(key, value)
 
 
-def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings, bool]:
-    env_openai = AzureOpenAISettings.from_env()
+def _render_sidebar() -> tuple[ContentUnderstandingSettings, bool]:
     env_content = ContentUnderstandingSettings.from_env()
 
     with st.sidebar:
-        st.header("Azure Configuration")
-        openai_endpoint = st.text_input("Azure OpenAI Endpoint", value=env_openai.endpoint)
-        use_openai_key_override = st.toggle(
-            "Manual OpenAI key override",
-            value=not bool(env_openai.api_key),
-            help="Keep this off to use AZURE_OPENAI_API_KEY from .env without displaying it.",
-            key="manual_openai_key_override_v2",
+        st.header("Content Understanding")
+        content_endpoint = st.text_input("Endpoint", value=env_content.endpoint)
+        use_content_key_override = st.toggle(
+            "Manual key override",
+            value=False,
+            help="Keep this off to use CONTENTUNDERSTANDING_KEY from .env or DefaultAzureCredential.",
+            key="manual_content_key_override_v3",
         )
-        if use_openai_key_override:
-            openai_key_input = st.text_input(
-                "Azure OpenAI API Key Override",
+        if use_content_key_override:
+            content_key_input = st.text_input(
+                "Content Understanding Key Override",
                 value="",
                 type="password",
-                placeholder="Enter API key",
-                key="azure_openai_api_key_override_v2",
+                placeholder="Optional key",
+                key="content_understanding_key_override_v3",
             )
         else:
-            openai_key_input = ""
-            st.caption("Azure OpenAI API key is loaded from .env.")
-        deployment_name = st.text_input("Deployment Name", value=env_openai.deployment_name)
-        openai_api_version = st.text_input("Azure OpenAI API Version", value=env_openai.api_version)
-
-        with st.expander("Content Understanding", expanded=True):
-            content_endpoint = st.text_input("Content Understanding Endpoint", value=env_content.endpoint)
-            use_content_key_override = st.toggle(
-                "Manual Content Understanding key override",
-                value=False,
-                help="Keep this off to use CONTENTUNDERSTANDING_KEY from .env or DefaultAzureCredential.",
-                key="manual_content_key_override_v2",
-            )
-            if use_content_key_override:
-                content_key_input = st.text_input(
-                    "Content Understanding Key Override",
-                    value="",
-                    type="password",
-                    placeholder="Optional key",
-                    key="content_understanding_key_override_v2",
-                )
+            content_key_input = ""
+            if env_content.key:
+                st.caption("Content Understanding key is loaded from .env.")
             else:
-                content_key_input = ""
-                if env_content.key:
-                    st.caption("Content Understanding key is loaded from .env.")
-                else:
-                    st.caption("Content Understanding key is blank; DefaultAzureCredential will be used.")
-            analyzer_id = st.text_input("Analyzer ID", value=env_content.analyzer_id)
-            content_api_version = st.text_input("Content Understanding API Version", value=env_content.api_version)
+                st.caption("Content Understanding key is blank; DefaultAzureCredential will be used.")
+        analyzer_id = st.text_input("Analyzer ID", value=env_content.analyzer_id)
+        content_api_version = st.text_input("API Version", value=env_content.api_version)
 
         dark_mode = st.toggle("Dark Mode", value=False)
 
-    openai_settings = AzureOpenAISettings(
-        endpoint=openai_endpoint,
-        api_key=openai_key_input.strip() or env_openai.api_key,
-        deployment_name=deployment_name,
-        api_version=openai_api_version,
-    )
     content_settings = ContentUnderstandingSettings(
         endpoint=content_endpoint,
         key=content_key_input.strip() or env_content.key,
@@ -155,56 +124,32 @@ def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings
         api_version=content_api_version,
     )
     with st.sidebar:
-        _render_configuration_status(openai_settings, content_settings)
-    return openai_settings, content_settings, dark_mode
+        _render_configuration_status(content_settings)
+    return content_settings, dark_mode
 
 
-def _render_configuration_status(
-    openai_settings: AzureOpenAISettings,
-    content_settings: ContentUnderstandingSettings,
-) -> None:
-    errors = _configuration_errors(openai_settings, content_settings)
+def _render_configuration_status(content_settings: ContentUnderstandingSettings) -> None:
+    errors = _configuration_errors(content_settings)
     if errors:
         for error in errors:
             st.error(error)
         return
-    if openai_settings.is_configured:
-        st.success("Azure OpenAI configuration is ready.")
+    st.success("Content Understanding configuration is ready.")
 
 
-def _configuration_errors(
-    openai_settings: AzureOpenAISettings,
-    content_settings: ContentUnderstandingSettings,
-) -> list[str]:
+def _configuration_errors(content_settings: ContentUnderstandingSettings) -> list[str]:
     errors: list[str] = []
-    openai_endpoint = openai_settings.endpoint.strip()
     content_endpoint = content_settings.endpoint.strip()
 
-    if not openai_endpoint:
-        errors.append("Azure OpenAI Endpoint is required.")
-    elif _is_foundry_services_endpoint(openai_endpoint):
+    if not content_endpoint:
+        errors.append("Content Understanding endpoint is required.")
+    elif not _is_foundry_services_endpoint(content_endpoint):
         errors.append(
-            "Azure OpenAI Endpoint is set to a Foundry project or Content Understanding endpoint. "
-            "Use the Azure OpenAI endpoint instead, for example https://<resource-name>.openai.azure.com/."
+            "Content Understanding endpoint should end with .services.ai.azure.com, "
+            "for example https://<resource-name>.services.ai.azure.com/."
         )
-    elif not _is_azure_openai_endpoint(openai_endpoint):
-        errors.append(
-            "Azure OpenAI Endpoint must end with .openai.azure.com. "
-            "Use the value shown as Azure OpenAI endpoint in Azure AI Foundry."
-        )
-
-    if content_endpoint and _normalize_endpoint(openai_endpoint) == _normalize_endpoint(content_endpoint):
-        errors.append(
-            "Azure OpenAI Endpoint and Content Understanding Endpoint are identical. "
-            "They must be different resources/endpoints."
-        )
-
-    if not openai_settings.deployment_name.strip():
-        errors.append("Deployment Name is required and must match the exact Azure OpenAI model deployment name.")
-
-    if not openai_settings.api_key.strip():
-        errors.append("Azure OpenAI API key is required. Put AZURE_OPENAI_API_KEY in .env or enable manual override.")
-
+    if not content_settings.analyzer_id.strip():
+        errors.append("Analyzer ID is required. Use the analyzer ID created in Content Understanding Studio, such as ats.")
     return errors
 
 
@@ -212,14 +157,9 @@ def _normalize_endpoint(endpoint: str) -> str:
     return endpoint.strip().rstrip("/").lower()
 
 
-def _is_azure_openai_endpoint(endpoint: str) -> bool:
-    normalized = _normalize_endpoint(endpoint)
-    return normalized.startswith("https://") and normalized.endswith(".openai.azure.com")
-
-
 def _is_foundry_services_endpoint(endpoint: str) -> bool:
     normalized = _normalize_endpoint(endpoint)
-    return normalized.endswith(".services.ai.azure.com")
+    return normalized.startswith("https://") and normalized.endswith(".services.ai.azure.com")
 
 
 def _inject_theme(dark_mode: bool) -> None:
@@ -482,31 +422,31 @@ def _inject_theme(dark_mode: bool) -> None:
 
 def _run_resume_extraction(
     resume_file: Any,
-    openai_settings: AzureOpenAISettings,
     content_settings: ContentUnderstandingSettings,
 ) -> bool:
     if resume_file is None:
         st.warning("Upload a PDF or DOCX resume first.")
         return False
-    if not openai_settings.is_configured:
-        st.error("Azure OpenAI endpoint, API key, and deployment name are required.")
-        return False
-    if errors := _configuration_errors(openai_settings, content_settings):
+    if errors := _configuration_errors(content_settings):
         for error in errors:
             st.error(error)
         return False
 
     try:
-        with st.spinner("Extracting resume with Azure Content Understanding and GPT..."):
+        with st.spinner("Extracting resume with Azure Content Understanding..."):
             processor = DocumentProcessor(content_settings)
             document_result = processor.process_uploaded_file(resume_file)
             if not document_result.text.strip():
                 st.error("No readable text was extracted from the resume.")
                 return False
 
-            agent = ATSAgent(openai_settings)
-            resume = agent.extract_resume_data(document_result.text, source_file=document_result.file_name)
-            resume.warnings = [*resume.warnings, *document_result.warnings]
+            agent = ATSAgent()
+            resume = agent.extract_resume_data(
+                document_result.text,
+                source_file=document_result.file_name,
+                raw_result=document_result.raw_result,
+                warnings=document_result.warnings,
+            )
             st.session_state.resume_data = resume
             st.session_state.document_source = document_result.source
             st.session_state.skill_analysis = None
@@ -525,31 +465,23 @@ def _run_resume_extraction(
 
 def _ensure_resume_available(
     resume_file: Any,
-    openai_settings: AzureOpenAISettings,
     content_settings: ContentUnderstandingSettings,
 ) -> bool:
     if st.session_state.get("resume_data"):
         return True
-    return _run_resume_extraction(resume_file, openai_settings, content_settings)
+    return _run_resume_extraction(resume_file, content_settings)
 
 
-def _run_ats_analysis(job_description: str, openai_settings: AzureOpenAISettings) -> None:
+def _run_ats_analysis(job_description: str) -> None:
     if not job_description.strip():
         st.warning("Paste a job description before running ATS analysis.")
-        return
-    if not openai_settings.is_configured:
-        st.error("Azure OpenAI endpoint, API key, and deployment name are required.")
-        return
-    if errors := _configuration_errors(openai_settings, ContentUnderstandingSettings()):
-        for error in errors:
-            st.error(error)
         return
 
     resume: ResumeData = st.session_state.resume_data
     try:
-        with st.spinner("Analyzing skills, job requirements, and ATS score..."):
-            agent = ATSAgent(openai_settings)
-            matcher = JDMatcher(openai_settings)
+        with st.spinner("Analyzing skills, job requirements, and ATS score locally..."):
+            agent = ATSAgent()
+            matcher = JDMatcher()
             skill_analysis = agent.analyze_skills(resume)
             job_analysis = matcher.analyze(job_description)
             ats_report = agent.generate_ats_report(resume, skill_analysis, job_analysis, job_description)
@@ -573,19 +505,11 @@ def _run_ats_analysis(job_description: str, openai_settings: AzureOpenAISettings
         st.error(f"ATS analysis failed: {_format_service_error(exc)}")
 
 
-def _run_recommendations(openai_settings: AzureOpenAISettings) -> None:
-    if not openai_settings.is_configured:
-        st.error("Azure OpenAI endpoint, API key, and deployment name are required.")
-        return
-    if errors := _configuration_errors(openai_settings, ContentUnderstandingSettings()):
-        for error in errors:
-            st.error(error)
-        return
-
+def _run_recommendations() -> None:
     resume: ResumeData = st.session_state.resume_data
     try:
-        with st.spinner("Generating career recommendations..."):
-            agent = ATSAgent(openai_settings)
+        with st.spinner("Generating career recommendations locally..."):
+            agent = ATSAgent()
             skill_analysis = st.session_state.skill_analysis or agent.analyze_skills(resume)
             st.session_state.skill_analysis = skill_analysis
             career_recommendation = agent.generate_career_recommendations(
@@ -605,29 +529,7 @@ def _run_recommendations(openai_settings: AzureOpenAISettings) -> None:
 
 
 def _format_service_error(exc: Exception) -> str:
-    root: BaseException = exc
-    if isinstance(exc, RetryError) and exc.last_attempt:
-        retry_exc = exc.last_attempt.exception()
-        if retry_exc:
-            root = retry_exc
-
-    if isinstance(root, APIStatusError):
-        status_code = root.status_code
-        message = str(root)
-        if status_code == 404:
-            return (
-                "Azure OpenAI returned 404 Not Found. Check that the Azure OpenAI Endpoint is the GPT resource "
-                "endpoint, the Deployment Name exactly matches your deployed model, and the API key belongs to "
-                f"that resource. Details: {message}"
-            )
-        if status_code in {401, 403}:
-            return (
-                "Azure OpenAI authentication failed. Check that the API key belongs to the configured endpoint. "
-                f"Details: {message}"
-            )
-        return f"Azure service returned HTTP {status_code}. Details: {message}"
-
-    return f"{root.__class__.__name__}: {root}"
+    return f"{exc.__class__.__name__}: {exc}"
 
 
 def _render_resume_tabs(resume: ResumeData, skill_analysis: SkillAnalysis | None) -> None:
