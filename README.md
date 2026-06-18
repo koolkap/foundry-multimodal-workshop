@@ -1,12 +1,12 @@
 # ATS Resume Intelligence Agent
 
-A production-ready Streamlit application that demonstrates Azure AI Foundry Content Understanding and Azure OpenAI agentic analysis for resume parsing, ATS matching, skill gap analysis, and career recommendations.
+A production-ready Streamlit application that demonstrates Azure AI Foundry Content Understanding for resume parsing, ATS matching, skill gap analysis, and career recommendations.
 
 ## Features
 
 - Resume upload for PDF and DOCX files
-- Azure AI Content Understanding document extraction
-- Azure OpenAI GPT-4.1 or GPT-4o powered resume parsing
+- Azure AI Content Understanding document extraction with a CU Studio analyzer
+- Local deterministic ATS skill analysis, job matching, scoring, and recommendations
 - Structured Pydantic JSON outputs
 - Job description analysis
 - ATS score from 0 to 100 using:
@@ -51,9 +51,8 @@ A production-ready Streamlit application that demonstrates Azure AI Foundry Cont
 
 Create or use existing Azure resources:
 
-1. Azure OpenAI resource with a GPT-4.1 or GPT-4o deployment.
-2. Microsoft Foundry or Azure AI Services resource that supports Azure AI Content Understanding.
-3. A Content Understanding analyzer. The default is `prebuilt-documentSearch`; replace it with your custom deployed analyzer ID if you already created one for resumes.
+1. Microsoft Foundry or Azure AI Services resource that supports Azure AI Content Understanding.
+2. A Content Understanding analyzer created in CU Studio. The default analyzer ID in this app is `ats`.
 
 Copy the environment template:
 
@@ -64,14 +63,9 @@ Copy-Item .env.example .env
 Update `.env`:
 
 ```env
-AZURE_OPENAI_ENDPOINT=https://<your-openai-resource>.openai.azure.com/
-AZURE_OPENAI_API_KEY=<your-azure-openai-api-key>
-AZURE_OPENAI_DEPLOYMENT=gpt-4.1
-AZURE_OPENAI_API_VERSION=2025-01-01-preview
-
 CONTENTUNDERSTANDING_ENDPOINT=https://<your-foundry-resource>.services.ai.azure.com/
 CONTENTUNDERSTANDING_KEY=<optional-content-understanding-key>
-CONTENTUNDERSTANDING_ANALYZER_ID=prebuilt-documentSearch
+CONTENTUNDERSTANDING_ANALYZER_ID=ats
 CONTENTUNDERSTANDING_API_VERSION=2025-11-01
 ```
 
@@ -94,7 +88,7 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The sidebar lets you override all Azure values at runtime without editing files.
+The sidebar lets you override Content Understanding endpoint, analyzer ID, API version, and key behavior at runtime without editing files.
 
 ## Workflow
 
@@ -120,10 +114,10 @@ The sidebar lets you override all Azure values at runtime without editing files.
 
 ## Notes
 
-- Azure Content Understanding is used first for document extraction.
+- Azure Content Understanding is used first for document extraction and structured analyzer output.
 - Local PDF/DOCX parsing is included as a development fallback.
-- Azure OpenAI is required for structured resume parsing, skill analysis, JD analysis, matching, and recommendations.
-- The app enforces the ATS score formula in Python after the model returns its analysis, so scoring stays consistent.
+- No separate Azure OpenAI endpoint, model deployment, or API version is required by this app.
+- The app enforces the ATS score formula in Python, so scoring stays consistent and does not require a separate GPT deployment.
 
 ## References
 

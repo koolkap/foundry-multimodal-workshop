@@ -10,7 +10,7 @@ from typing import Any
 class ContentUnderstandingSettings:
     endpoint: str = ""
     key: str = ""
-    analyzer_id: str = "prebuilt-documentSearch"
+    analyzer_id: str = "ats"
     api_version: str = "2025-11-01"
 
     @classmethod
@@ -20,7 +20,7 @@ class ContentUnderstandingSettings:
             or os.getenv("AZURE_CONTENT_UNDERSTANDING_ENDPOINT", ""),
             key=os.getenv("CONTENTUNDERSTANDING_KEY", "")
             or os.getenv("CONTENT_UNDERSTANDING_KEY", ""),
-            analyzer_id=os.getenv("CONTENTUNDERSTANDING_ANALYZER_ID", "prebuilt-documentSearch"),
+            analyzer_id=os.getenv("CONTENTUNDERSTANDING_ANALYZER_ID", "ats"),
             api_version=os.getenv("CONTENTUNDERSTANDING_API_VERSION", "2025-11-01"),
         )
 
