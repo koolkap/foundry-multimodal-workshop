@@ -133,25 +133,30 @@ class ATSAgent:
     ) -> ResumeData:
         fields = self._extract_cu_fields(raw_result or {})
         resume = ResumeData(
-            name=self._first_text(fields, ["name", "candidate_name", "full_name", "person_name"]),
-            email=self._first_text(fields, ["email", "email_address", "e_mail"]),
-            phone=self._first_text(fields, ["phone", "phone_number", "mobile", "contact_number"]),
+            name=self._first_text(fields, ["FullName", "name", "candidate_name", "full_name", "person_name"]),
+            email=self._first_text(fields, ["ContactEmail", "email", "email_address", "e_mail"]),
+            phone=self._first_text(fields, ["ContactPhone", "phone", "phone_number", "mobile", "contact_number"]),
             linkedin=self._first_text(fields, ["linkedin", "linked_in", "linkedin_url", "profile_url"]),
             location=self._first_text(fields, ["location", "address", "city", "current_location"]),
             professional_summary=self._first_text(fields, ["summary", "professional_summary", "profile", "objective"]),
-            skills=self._as_list(self._first_value(fields, ["skills", "technical_skills", "key_skills", "skill_set"])),
+            skills=self._skills_from_fields(fields),
             experience=self._experience_entries(
-                self._first_value(fields, ["experience", "work_experience", "employment", "employment_history"])
+                self._first_value(
+                    fields,
+                    ["ProfessionalExperience", "experience", "work_experience", "employment", "employment_history"],
+                )
             ),
-            education=self._education_entries(self._first_value(fields, ["education", "academic", "academics"])),
+            education=self._education_entries(self._first_value(fields, ["Education", "academic", "academics"])),
             certifications=self._as_list(
-                self._first_value(fields, ["certifications", "certificates", "licenses", "credentials"])
+                self._first_value(
+                    fields,
+                    ["certifications", "certificates", "licenses", "credentials", "PatentsAndRecognition"],
+                )
             ),
-            projects=self._project_entries(self._first_value(fields, ["projects", "project_experience"])),
-            total_years_experience=self._first_float(
-                fields,
-                ["total_years_experience", "years_experience", "experience_years", "total_experience"],
+            projects=self._project_entries(
+                self._first_value(fields, ["KeyProductsAndProjects", "projects", "project_experience"])
             ),
+            total_years_experience=self._experience_years_from_fields(fields),
             raw_text=resume_text,
             source_file=source_file,
             confidence=self._first_float(fields, ["confidence", "confidence_score"]),
@@ -307,6 +312,33 @@ class ATSAgent:
                 fields[self._field_key(key)] = self._coerce_cu_value(value)
         return fields
 
+    def _skills_from_fields(self, fields: dict[str, Any]) -> list[str]:
+        values: list[str] = []
+        for alias in ["skills", "TechnicalSkills", "key_skills", "skill_set"]:
+            values.extend(self._as_list(self._first_value(fields, [alias])))
+
+        leadership = self._first_value(fields, ["CoreLeadershipCompetencies"])
+        values.extend(self._as_list(leadership))
+
+        detected = self._detect_catalog_skills(" ".join(values))
+        return self._dedupe([*values, *detected])
+
+    def _experience_years_from_fields(self, fields: dict[str, Any]) -> float:
+        direct_years = self._first_float(
+            fields,
+            ["total_years_experience", "years_experience", "experience_years", "total_experience"],
+        )
+        if direct_years:
+            return direct_years
+
+        highlights = self._first_value(fields, ["ExperienceHighlights"])
+        if isinstance(highlights, dict):
+            return self._first_float(
+                {self._field_key(key): value for key, value in highlights.items()},
+                ["YearsExperience", "total_years_experience", "years_experience"],
+            )
+        return 0.0
+
     def _collect_field_sets(self, node: Any, field_sets: list[dict[str, Any]]) -> None:
         if isinstance(node, dict):
             fields = node.get("fields")
@@ -376,10 +408,14 @@ class ATSAgent:
             resume.name = self._guess_name(text)
 
     def _first_value(self, fields: dict[str, Any], aliases: list[str]) -> Any:
+        compact_fields = {self._compact_key(key): value for key, value in fields.items()}
         for alias in aliases:
             normalized = self._field_key(alias)
             if normalized in fields:
                 return fields[normalized]
+            compact = self._compact_key(alias)
+            if compact in compact_fields:
+                return compact_fields[compact]
         return None
 
     def _first_text(self, fields: dict[str, Any], aliases: list[str]) -> str:
@@ -433,7 +469,7 @@ class ATSAgent:
                     field_of_study=self._record_text(item, ["field_of_study", "major", "specialization"]),
                     graduation_year=self._record_text(item, ["graduation_year", "year", "end_date"]),
                     location=self._record_text(item, ["location"]),
-                    achievements=self._as_list(self._record_value(item, ["achievements", "honors"])),
+                    achievements=self._as_list(self._record_value(item, ["achievements", "honors", "GpaOrScore"])),
                 )
             )
         return [entry for entry in entries if entry.institution or entry.degree]
@@ -444,10 +480,12 @@ class ATSAgent:
         for item in items:
             entries.append(
                 ProjectEntry(
-                    name=self._record_text(item, ["name", "project", "title"]),
+                    name=self._record_text(item, ["ProductName", "name", "project", "title"]),
                     description=self._record_text(item, ["description", "summary"]),
                     technologies=self._as_list(self._record_value(item, ["technologies", "tech_stack", "skills"])),
-                    outcomes=self._as_list(self._record_value(item, ["outcomes", "impact", "results"])),
+                    outcomes=self._as_list(
+                        self._record_value(item, ["outcomes", "impact", "results", "ProjectDates"])
+                    ),
                 )
             )
         return [entry for entry in entries if entry.name or entry.description]
@@ -492,7 +530,10 @@ class ATSAgent:
                 result.extend(self._as_list(item))
             return self._dedupe(result)
         if isinstance(value, dict):
-            return self._dedupe([str(item) for item in value.values() if item])
+            result: list[str] = []
+            for item in value.values():
+                result.extend(self._as_list(item))
+            return self._dedupe(result)
         if isinstance(value, str):
             pieces = re.split(r"[,;\n|]+", value)
             return self._dedupe([piece.strip(" -\t") for piece in pieces if piece.strip(" -\t")])
@@ -705,6 +746,9 @@ class ATSAgent:
     def _field_key(self, value: str) -> str:
         key = re.sub(r"[^a-zA-Z0-9]+", "_", str(value)).strip("_").lower()
         return key
+
+    def _compact_key(self, value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
     def _dedupe(self, values: list[str]) -> list[str]:
         seen: set[str] = set()
