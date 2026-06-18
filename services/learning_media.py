@@ -176,10 +176,16 @@ def _validate_azure_openai_settings(endpoint: str, api_key: str, deployment: str
         )
     if not endpoint.lower().startswith("https://"):
         raise ValueError("AZURE_OPENAI_ENDPOINT must start with https://.")
-    if ".openai.azure.com" not in endpoint.lower():
+    normalized_endpoint = endpoint.lower()
+    supported_endpoint = (
+        ".openai.azure.com" in normalized_endpoint
+        or ".cognitiveservices.azure.com" in normalized_endpoint
+    )
+    if not supported_endpoint:
         raise ValueError(
-            "AZURE_OPENAI_ENDPOINT should look like https://<resource-name>.openai.azure.com/. "
-            "Do not use the Content Understanding .services.ai.azure.com endpoint here."
+            "AZURE_OPENAI_ENDPOINT should look like https://<resource-name>.openai.azure.com/ "
+            "or https://<resource-name>.cognitiveservices.azure.com/. Do not use the "
+            "Content Understanding .services.ai.azure.com endpoint here."
         )
 
 
