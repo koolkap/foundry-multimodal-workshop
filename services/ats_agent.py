@@ -354,11 +354,17 @@ class ATSAgent:
         if isinstance(value, dict):
             for key in (
                 "valueString",
+                "value_string",
                 "valueDate",
+                "value_date",
                 "valuePhoneNumber",
+                "value_phone_number",
                 "valueNumber",
+                "value_number",
                 "valueInteger",
+                "value_integer",
                 "valueBoolean",
+                "value_boolean",
                 "content",
                 "text",
                 "markdown",
@@ -368,10 +374,17 @@ class ATSAgent:
                     return self._coerce_cu_value(value[key])
             if isinstance(value.get("valueArray"), list):
                 return [self._coerce_cu_value(item) for item in value["valueArray"]]
+            if isinstance(value.get("value_array"), list):
+                return [self._coerce_cu_value(item) for item in value["value_array"]]
             if isinstance(value.get("valueObject"), dict):
                 return {
                     self._field_key(key): self._coerce_cu_value(item)
                     for key, item in value["valueObject"].items()
+                }
+            if isinstance(value.get("value_object"), dict):
+                return {
+                    self._field_key(key): self._coerce_cu_value(item)
+                    for key, item in value["value_object"].items()
                 }
             if isinstance(value.get("fields"), dict):
                 return {
