@@ -123,58 +123,235 @@ def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings
 def _inject_theme(dark_mode: bool) -> None:
     if dark_mode:
         colors = {
-            "bg": "#101418",
-            "panel": "#171d23",
+            "app_bg": "#0f1419",
+            "sidebar_bg": "#151b22",
+            "surface": "#1b232c",
+            "surface_alt": "#202a34",
+            "input_bg": "#111820",
             "text": "#f4f7fb",
-            "muted": "#a7b1bd",
-            "accent": "#2fb7a4",
-            "border": "#2a343f",
+            "heading": "#f8fafc",
+            "muted": "#a9b4c0",
+            "accent": "#14a99a",
+            "accent_hover": "#0f8f83",
+            "border": "#32404d",
+            "button_text": "#ffffff",
+            "danger": "#ffb4a8",
         }
     else:
         colors = {
-            "bg": "#f7f9fb",
-            "panel": "#ffffff",
-            "text": "#18212b",
-            "muted": "#5c6875",
+            "app_bg": "#f6f8fb",
+            "sidebar_bg": "#ffffff",
+            "surface": "#ffffff",
+            "surface_alt": "#eef3f7",
+            "input_bg": "#ffffff",
+            "text": "#17212b",
+            "heading": "#101820",
+            "muted": "#647180",
             "accent": "#0f8b8d",
-            "border": "#d9e0e8",
+            "accent_hover": "#0b7375",
+            "border": "#d6dee8",
+            "button_text": "#ffffff",
+            "danger": "#b42318",
         }
 
     st.markdown(
         f"""
         <style>
+        :root {{
+            --ats-bg: {colors["app_bg"]};
+            --ats-sidebar: {colors["sidebar_bg"]};
+            --ats-surface: {colors["surface"]};
+            --ats-surface-alt: {colors["surface_alt"]};
+            --ats-input: {colors["input_bg"]};
+            --ats-text: {colors["text"]};
+            --ats-heading: {colors["heading"]};
+            --ats-muted: {colors["muted"]};
+            --ats-accent: {colors["accent"]};
+            --ats-accent-hover: {colors["accent_hover"]};
+            --ats-border: {colors["border"]};
+            --ats-button-text: {colors["button_text"]};
+            --ats-danger: {colors["danger"]};
+        }}
+
         .stApp {{
-            background: {colors["bg"]};
-            color: {colors["text"]};
+            background: var(--ats-bg);
+            color: var(--ats-text);
         }}
+
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"],
+        [data-testid="stMainBlockContainer"] {{
+            background: var(--ats-bg);
+            color: var(--ats-text);
+        }}
+
+        [data-testid="stHeader"] {{
+            background: var(--ats-bg);
+            border-bottom: 1px solid var(--ats-border);
+        }}
+
         [data-testid="stSidebar"] {{
-            background: {colors["panel"]};
-            border-right: 1px solid {colors["border"]};
+            background: var(--ats-sidebar);
+            border-right: 1px solid var(--ats-border);
         }}
-        h1, h2, h3, h4, h5, h6, p, label, span {{
+
+        [data-testid="stSidebar"] > div:first-child {{
+            background: var(--ats-sidebar);
+        }}
+
+        h1, h2, h3, h4, h5, h6 {{
+            color: var(--ats-heading) !important;
             letter-spacing: 0;
         }}
+
+        p, label, span, div, small {{
+            letter-spacing: 0;
+        }}
+
+        p,
+        label,
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stWidgetLabel"],
+        [data-testid="stWidgetLabel"] label,
+        [data-testid="stWidgetLabel"] p,
+        [data-testid="stWidgetLabel"] span {{
+            color: var(--ats-text) !important;
+        }}
+
+        [data-testid="stCaptionContainer"],
+        small,
+        .muted {{
+            color: var(--ats-muted) !important;
+        }}
+
+        [data-baseweb="input"],
+        [data-baseweb="textarea"],
+        [data-baseweb="select"],
+        [data-testid="stTextInputRootElement"],
+        [data-testid="stTextAreaRootElement"] {{
+            background: var(--ats-input) !important;
+            border: 1px solid var(--ats-border) !important;
+            border-radius: 8px !important;
+            color: var(--ats-text) !important;
+        }}
+
+        [data-baseweb="input"] input,
+        [data-baseweb="textarea"] textarea,
+        input,
+        textarea {{
+            background: var(--ats-input) !important;
+            color: var(--ats-text) !important;
+            caret-color: var(--ats-accent) !important;
+            border-color: var(--ats-border) !important;
+        }}
+
+        input::placeholder,
+        textarea::placeholder {{
+            color: var(--ats-muted) !important;
+            opacity: 1 !important;
+        }}
+
+        [data-testid="stFileUploaderDropzone"] {{
+            background: var(--ats-surface) !important;
+            border: 1px dashed var(--ats-border) !important;
+            border-radius: 8px !important;
+        }}
+
+        [data-testid="stFileUploaderDropzone"] * {{
+            color: var(--ats-text) !important;
+        }}
+
+        [data-testid="stFileUploaderDropzone"] small,
+        [data-testid="stFileUploaderDropzone"] span {{
+            color: var(--ats-muted) !important;
+        }}
+
+        [data-testid="stFileUploaderDropzone"] button {{
+            background: var(--ats-surface-alt) !important;
+            border: 1px solid var(--ats-border) !important;
+            color: var(--ats-text) !important;
+        }}
+
         .stTabs [data-baseweb="tab-list"] {{
             gap: 6px;
         }}
+
         .stTabs [data-baseweb="tab"] {{
-            border: 1px solid {colors["border"]};
+            border: 1px solid var(--ats-border);
             border-radius: 6px;
             padding: 8px 12px;
-            background: {colors["panel"]};
+            background: var(--ats-surface);
+            color: var(--ats-text);
         }}
+
+        .stTabs [aria-selected="true"] {{
+            border-color: var(--ats-accent) !important;
+            color: var(--ats-accent) !important;
+        }}
+
+        [data-testid="stExpander"] details {{
+            background: var(--ats-surface);
+            border: 1px solid var(--ats-border);
+            border-radius: 8px;
+        }}
+
+        [data-testid="stExpander"] summary {{
+            background: var(--ats-surface-alt);
+            color: var(--ats-text) !important;
+            border-radius: 7px 7px 0 0;
+        }}
+
+        [data-testid="stExpander"] summary * {{
+            color: var(--ats-text) !important;
+        }}
+
         div[data-testid="stMetric"] {{
-            background: {colors["panel"]};
-            border: 1px solid {colors["border"]};
+            background: var(--ats-surface);
+            border: 1px solid var(--ats-border);
             border-radius: 8px;
             padding: 14px 16px;
         }}
+
+        div[data-testid="stMetric"] * {{
+            color: var(--ats-text) !important;
+        }}
+
         .stButton > button, .stDownloadButton > button {{
             border-radius: 6px;
-            border-color: {colors["accent"]};
+            border: 1px solid var(--ats-accent) !important;
+            background: var(--ats-accent) !important;
+            color: var(--ats-button-text) !important;
+            font-weight: 600;
+            min-height: 44px;
         }}
-        small, .muted {{
-            color: {colors["muted"]};
+
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {{
+            background: var(--ats-accent-hover) !important;
+            border-color: var(--ats-accent-hover) !important;
+            color: var(--ats-button-text) !important;
+        }}
+
+        .stButton > button:disabled,
+        .stDownloadButton > button:disabled {{
+            background: var(--ats-surface-alt) !important;
+            border-color: var(--ats-border) !important;
+            color: var(--ats-muted) !important;
+        }}
+
+        [data-testid="stAlert"] {{
+            border-radius: 8px;
+        }}
+
+        [data-testid="stDataFrame"],
+        [data-testid="stJson"] {{
+            background: var(--ats-surface);
+            border-radius: 8px;
+        }}
+
+        a {{
+            color: var(--ats-accent) !important;
         }}
         </style>
         """,
