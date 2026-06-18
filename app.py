@@ -17,6 +17,7 @@ from models.ats_report import ATSReport, CareerRecommendation, JobDescriptionAna
 from services.ats_agent import ATSAgent
 from services.document_processor import ContentUnderstandingSettings, DocumentProcessor
 from services.jd_matcher import JDMatcher
+from services.learning_media import generate_learning_media
 
 
 load_dotenv()
@@ -40,10 +41,11 @@ def main() -> None:
     with jd_col:
         job_description = st.text_area("Job Description Input", height=210)
 
-    action_col_1, action_col_2, action_col_3 = st.columns(3)
+    action_col_1, action_col_2, action_col_3, action_col_4 = st.columns(4)
     extract_clicked = action_col_1.button("Extract Resume", use_container_width=True)
     analyze_clicked = action_col_2.button("Analyze ATS Score", use_container_width=True)
     recommend_clicked = action_col_3.button("Generate Recommendations", use_container_width=True)
+    learning_clicked = action_col_4.button("Generate Learning Media", use_container_width=True)
 
     if extract_clicked:
         _run_resume_extraction(resume_file, content_settings)
@@ -56,18 +58,25 @@ def main() -> None:
         if _ensure_resume_available(resume_file, content_settings):
             _run_recommendations()
 
+    if learning_clicked:
+        if _ensure_resume_available(resume_file, content_settings):
+            _run_learning_media()
+
     resume: ResumeData | None = st.session_state.get("resume_data")
     skill_analysis: SkillAnalysis | None = st.session_state.get("skill_analysis")
     job_analysis: JobDescriptionAnalysis | None = st.session_state.get("job_analysis")
     ats_report: ATSReport | None = st.session_state.get("ats_report")
     career_recommendation: CareerRecommendation | None = st.session_state.get("career_recommendation")
+    learning_media: dict[str, Any] | None = st.session_state.get("learning_media")
 
     if resume:
         _render_resume_tabs(resume, skill_analysis)
 
     if ats_report:
         _render_dashboard(ats_report, skill_analysis, career_recommendation)
-        _render_exports(resume, skill_analysis, job_analysis, ats_report, career_recommendation)
+        if learning_media:
+            _render_learning_media(learning_media)
+        _render_exports(resume, skill_analysis, job_analysis, ats_report, career_recommendation, learning_media)
 
     _render_history()
 
@@ -79,6 +88,7 @@ def _init_session_state() -> None:
         "job_analysis": None,
         "ats_report": None,
         "career_recommendation": None,
+        "learning_media": None,
         "document_source": "",
         "history": [],
     }
@@ -453,6 +463,7 @@ def _run_resume_extraction(
             st.session_state.job_analysis = None
             st.session_state.ats_report = None
             st.session_state.career_recommendation = None
+            st.session_state.learning_media = None
 
         st.success(f"Resume extracted through {st.session_state.document_source}.")
         for warning in resume.warnings:
@@ -499,6 +510,7 @@ def _run_ats_analysis(job_description: str) -> None:
             st.session_state.job_analysis = job_analysis
             st.session_state.ats_report = ats_report
             st.session_state.career_recommendation = career_recommendation
+            st.session_state.learning_media = None
             _add_history(resume, ats_report, job_analysis)
         st.success("ATS analysis complete.")
     except Exception as exc:  # noqa: BLE001
@@ -526,6 +538,32 @@ def _run_recommendations() -> None:
         st.success("Recommendations generated.")
     except Exception as exc:  # noqa: BLE001
         st.error(f"Recommendation generation failed: {_format_service_error(exc)}")
+
+
+def _run_learning_media() -> None:
+    resume: ResumeData | None = st.session_state.get("resume_data")
+    ats_report: ATSReport | None = st.session_state.get("ats_report")
+    if resume is None:
+        st.warning("Extract a resume before generating learning media.")
+        return
+    if ats_report is None:
+        st.warning("Run ATS analysis before generating learning media.")
+        return
+
+    if not ats_report.missing_skills and not ats_report.recommended_skills:
+        st.info("No missing skills were detected, so the media will focus on portfolio evidence and role alignment.")
+
+    try:
+        with st.spinner("Generating personalized learning media with Azure OpenAI GPT-4.1..."):
+            st.session_state.learning_media = generate_learning_media(
+                resume,
+                ats_report,
+                st.session_state.get("job_analysis"),
+                st.session_state.get("career_recommendation"),
+            )
+        st.success("Learning media generated.")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Learning media generation failed: {_format_service_error(exc)}")
 
 
 def _format_service_error(exc: Exception) -> str:
@@ -648,6 +686,173 @@ def _render_dashboard(
         st.dataframe(pd.DataFrame(role_rows), use_container_width=True, hide_index=True)
 
 
+def _render_learning_media(media: dict[str, Any]) -> None:
+    metadata = _safe_dict(media.get("metadata"))
+    missing_skills = [str(item) for item in _display_list(metadata.get("missing_skills")) if str(item).strip()]
+    target_skill = str(metadata.get("target_skill") or (missing_skills[0] if missing_skills else "Skill development"))
+    ats_score = metadata.get("ats_score", 0)
+
+    st.subheader("Learning Media Generator")
+    summary_col, score_col = st.columns([0.78, 0.22], vertical_alignment="top")
+    with summary_col:
+        st.markdown(f"**Primary Skill:** {target_skill}")
+        if missing_skills:
+            st.markdown(f"**Skill Gaps:** {', '.join(missing_skills)}")
+        if metadata.get("personalization_summary"):
+            st.markdown(str(metadata["personalization_summary"]))
+    with score_col:
+        st.metric("ATS Score", f"{ats_score}/100")
+
+    roadmap_tab, lesson_tab, quiz_tab, assignment_tab, project_tab, presentation_tab = st.tabs(
+        ["Learning Roadmap", "Lesson Plan", "Quiz", "Assignment", "Mini Project", "Presentation"]
+    )
+
+    with roadmap_tab:
+        roadmap = _safe_dict(media.get("learning_roadmap"))
+        if roadmap.get("learning_outcome"):
+            st.markdown("**Learning Outcome**")
+            st.markdown(str(roadmap["learning_outcome"]))
+        weeks = _display_list(roadmap.get("weeks"))
+        if not weeks:
+            st.info("No roadmap items were generated.")
+        for index, week in enumerate(weeks, start=1):
+            week_data = _safe_dict(week)
+            if not week_data:
+                with st.expander(f"Week {index}", expanded=index == 1):
+                    st.markdown(str(week))
+                continue
+            week_number = week_data.get("week") or index
+            title = week_data.get("title") or f"Week {week_number}"
+            with st.expander(f"Week {week_number}: {title}", expanded=index == 1):
+                _render_list_section("Weekly Objectives", week_data.get("weekly_objectives"))
+                _render_list_section("Activities", week_data.get("activities"))
+                if week_data.get("deliverable"):
+                    st.markdown("**Deliverable**")
+                    st.markdown(str(week_data["deliverable"]))
+
+    with lesson_tab:
+        lesson = _safe_dict(media.get("lesson_plan"))
+        st.markdown(f"**Skill:** {lesson.get('skill') or target_skill}")
+        for label, key in [
+            ("Learning Objectives", "learning_objectives"),
+            ("Agenda", "agenda"),
+            ("Activities", "activities"),
+            ("Assessment", "assessment"),
+        ]:
+            with st.expander(label, expanded=key == "learning_objectives"):
+                _render_list_items(lesson.get(key))
+
+    with quiz_tab:
+        quiz = _safe_dict(media.get("quiz"))
+        mcqs = _display_list(quiz.get("mcqs"))
+        short_answers = _display_list(quiz.get("short_answer_questions"))
+        st.markdown("**Multiple Choice Questions**")
+        if not mcqs:
+            st.info("No multiple choice questions were generated.")
+        for index, item in enumerate(mcqs, start=1):
+            question = _safe_dict(item)
+            title = _truncate(str(question.get("question") or f"Question {index}"), 90)
+            with st.expander(f"MCQ {index}: {title}", expanded=index == 1):
+                if question.get("question"):
+                    st.markdown(str(question["question"]))
+                _render_list_section("Options", question.get("options"))
+                if question.get("answer"):
+                    st.markdown("**Answer**")
+                    st.markdown(str(question["answer"]))
+                if question.get("explanation"):
+                    st.markdown("**Explanation**")
+                    st.markdown(str(question["explanation"]))
+
+        st.markdown("**Short Answer Questions**")
+        if not short_answers:
+            st.info("No short answer questions were generated.")
+        for index, item in enumerate(short_answers, start=1):
+            question = _safe_dict(item)
+            title = _truncate(str(question.get("question") or f"Question {index}"), 90)
+            with st.expander(f"Short Answer {index}: {title}", expanded=index == 1):
+                if question.get("question"):
+                    st.markdown(str(question["question"]))
+                if question.get("sample_answer"):
+                    st.markdown("**Sample Answer**")
+                    st.markdown(str(question["sample_answer"]))
+
+    with assignment_tab:
+        assignment = _safe_dict(media.get("practical_assignment"))
+        st.markdown(f"**Project Title:** {assignment.get('project_title') or 'Practical Assignment'}")
+        if assignment.get("problem_statement"):
+            st.markdown("**Problem Statement**")
+            st.markdown(str(assignment["problem_statement"]))
+        for label, key in [("Deliverables", "deliverables"), ("Evaluation Criteria", "evaluation_criteria")]:
+            with st.expander(label, expanded=True):
+                _render_list_items(assignment.get(key))
+
+    with project_tab:
+        project = _safe_dict(media.get("mini_project"))
+        st.markdown(f"**Project:** {project.get('title') or 'Mini Project'}")
+        for label, key in [
+            ("Architecture", "architecture"),
+            ("Features", "features"),
+            ("Tech Stack", "tech_stack"),
+            ("GitHub Deliverables", "github_deliverables"),
+        ]:
+            with st.expander(label, expanded=key == "architecture"):
+                _render_list_items(project.get(key))
+
+    with presentation_tab:
+        slides = _display_list(media.get("presentation_outline"))
+        if not slides:
+            st.info("No presentation outline was generated.")
+        for index, item in enumerate(slides, start=1):
+            slide = _safe_dict(item)
+            slide_number = slide.get("slide") or index
+            title = slide.get("title") or f"Slide {slide_number}"
+            with st.expander(f"Slide {slide_number}: {title}", expanded=index == 1):
+                _render_list_items(slide.get("bullet_points"))
+
+
+def _render_list_section(label: str, values: Any) -> None:
+    st.markdown(f"**{label}**")
+    _render_list_items(values)
+
+
+def _render_list_items(values: Any) -> None:
+    items = _display_list(values)
+    if not items:
+        st.write("Not provided.")
+        return
+    for item in items:
+        if isinstance(item, dict):
+            parts = [f"{_format_key(key)}: {value}" for key, value in item.items() if value not in (None, "", [])]
+            st.markdown(f"- {'; '.join(parts)}" if parts else "- Not provided.")
+        else:
+            st.markdown(f"- {item}")
+
+
+def _safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _display_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple | set):
+        return list(value)
+    if value in (None, ""):
+        return []
+    return [value]
+
+
+def _format_key(value: str) -> str:
+    return str(value).replace("_", " ").title()
+
+
+def _truncate(value: str, limit: int) -> str:
+    clean = value.strip()
+    if len(clean) <= limit:
+        return clean
+    return f"{clean[: limit - 3].rstrip()}..."
+
+
 def _ats_gauge(score: int) -> go.Figure:
     fig = go.Figure(
         go.Indicator(
@@ -724,6 +929,7 @@ def _render_exports(
     job_analysis: JobDescriptionAnalysis | None,
     ats_report: ATSReport,
     career_recommendation: CareerRecommendation | None,
+    learning_media: dict[str, Any] | None = None,
 ) -> None:
     payload = {
         "resume": resume.model_dump() if resume else {},
@@ -731,6 +937,7 @@ def _render_exports(
         "job_description_analysis": job_analysis.model_dump() if job_analysis else {},
         "ats_report": ats_report.model_dump(),
         "career_recommendation": career_recommendation.model_dump() if career_recommendation else {},
+        "learning_media": learning_media or {},
     }
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     col_1, col_2, col_3 = st.columns(3)

@@ -25,6 +25,13 @@ A production-ready Streamlit application that demonstrates Azure AI Foundry Cont
   - Salary bands
   - Learning path
   - Missing technologies
+- Learning Media Generator powered by Azure OpenAI GPT-4.1:
+  - 8 week learning roadmap
+  - Lesson plan
+  - Quiz
+  - Practical assignment
+  - Mini project
+  - Presentation outline
 - Export JSON, CSV, and PDF reports
 - Session history
 - Dark mode toggle
@@ -40,6 +47,7 @@ A production-ready Streamlit application that demonstrates Azure AI Foundry Cont
 |-- services/
 |   |-- document_processor.py
 |   |-- ats_agent.py
+|   |-- learning_media.py
 |   `-- jd_matcher.py
 |-- models/
 |   `-- ats_report.py
@@ -67,6 +75,10 @@ CONTENTUNDERSTANDING_ENDPOINT=https://<your-foundry-resource>.services.ai.azure.
 CONTENTUNDERSTANDING_KEY=<optional-content-understanding-key>
 CONTENTUNDERSTANDING_ANALYZER_ID=ats
 CONTENTUNDERSTANDING_API_VERSION=2025-11-01
+AZURE_OPENAI_ENDPOINT=https://<your-azure-openai-resource>.openai.azure.com/
+AZURE_OPENAI_API_KEY=<your-azure-openai-key>
+AZURE_OPENAI_DEPLOYMENT=<your-gpt-4.1-deployment-name>
+AZURE_OPENAI_API_VERSION=<your-azure-openai-api-version>
 ```
 
 If `CONTENTUNDERSTANDING_KEY` is empty, the app uses `DefaultAzureCredential`. In that case, sign in locally with Azure CLI and ensure the signed-in identity has the required Cognitive Services permissions.
@@ -97,7 +109,8 @@ The sidebar lets you override Content Understanding endpoint, analyzer ID, API v
 3. Paste a job description.
 4. Click `Analyze ATS Score`.
 5. Click `Generate Recommendations` to refresh career guidance.
-6. Export the report as JSON, CSV, or PDF.
+6. Click `Generate Learning Media` to create a personalized roadmap, lesson plan, quiz, assignment, mini project, and presentation outline.
+7. Export the report as JSON, CSV, or PDF.
 
 ## Output Example
 
@@ -116,8 +129,8 @@ The sidebar lets you override Content Understanding endpoint, analyzer ID, API v
 
 - Azure Content Understanding is used first for document extraction and structured analyzer output.
 - Local PDF/DOCX parsing is included as a development fallback.
-- No separate Azure OpenAI endpoint, model deployment, or API version is required by this app.
-- The app enforces the ATS score formula in Python, so scoring stays consistent and does not require a separate GPT deployment.
+- ATS scoring and matching stay deterministic in Python.
+- Azure OpenAI is used only for the Learning Media Generator and reads the existing `AZURE_OPENAI_*` settings from the environment.
 
 ## References
 
