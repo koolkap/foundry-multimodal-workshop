@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 from datetime import datetime
 from html import escape
 from typing import Any
@@ -554,7 +555,8 @@ def _run_learning_media() -> None:
         st.info("No missing skills were detected, so the media will focus on portfolio evidence and role alignment.")
 
     try:
-        with st.spinner("Generating personalized learning media with Azure OpenAI GPT-4.1..."):
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "configured deployment")
+        with st.spinner(f"Generating personalized learning media with Azure OpenAI deployment {deployment}..."):
             st.session_state.learning_media = generate_learning_media(
                 resume,
                 ats_report,

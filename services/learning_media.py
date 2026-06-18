@@ -172,7 +172,7 @@ def _validate_azure_openai_settings(endpoint: str, api_key: str, deployment: str
         raise ValueError(
             "Azure OpenAI configuration still contains placeholder values: "
             f"{', '.join(placeholders)}. Update .env with your real Azure OpenAI resource endpoint, key, "
-            "GPT-4.1 deployment name, and API version."
+            "model deployment name, and API version."
         )
     if not endpoint.lower().startswith("https://"):
         raise ValueError("AZURE_OPENAI_ENDPOINT must start with https://.")

@@ -25,7 +25,7 @@ A production-ready Streamlit application that demonstrates Azure AI Foundry Cont
   - Salary bands
   - Learning path
   - Missing technologies
-- Learning Media Generator powered by Azure OpenAI GPT-4.1:
+- Learning Media Generator powered by your configured Azure OpenAI deployment:
   - 8 week learning roadmap
   - Lesson plan
   - Quiz
@@ -79,7 +79,7 @@ AZURE_OPENAI_ENDPOINT=https://<your-azure-openai-resource>.openai.azure.com/
 # Foundry/Azure AI Services deployments may instead use:
 # AZURE_OPENAI_ENDPOINT=https://<your-foundry-resource>.cognitiveservices.azure.com/
 AZURE_OPENAI_API_KEY=<your-azure-openai-key>
-AZURE_OPENAI_DEPLOYMENT=<your-gpt-4.1-deployment-name>
+AZURE_OPENAI_DEPLOYMENT=<your-model-deployment-name>
 AZURE_OPENAI_API_VERSION=<your-azure-openai-api-version>
 ```
 
