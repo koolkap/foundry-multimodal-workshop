@@ -93,25 +93,48 @@ def _render_sidebar() -> tuple[AzureOpenAISettings, ContentUnderstandingSettings
     with st.sidebar:
         st.header("Azure Configuration")
         openai_endpoint = st.text_input("Azure OpenAI Endpoint", value=env_openai.endpoint)
-        openai_key_input = st.text_input(
-            "Azure OpenAI API Key",
-            value="",
-            type="password",
-            placeholder="Loaded from .env" if env_openai.api_key else "Enter API key",
-            help="Leave blank to use AZURE_OPENAI_API_KEY from .env.",
+        use_openai_key_override = st.toggle(
+            "Manual OpenAI key override",
+            value=not bool(env_openai.api_key),
+            help="Keep this off to use AZURE_OPENAI_API_KEY from .env without displaying it.",
+            key="manual_openai_key_override_v2",
         )
+        if use_openai_key_override:
+            openai_key_input = st.text_input(
+                "Azure OpenAI API Key Override",
+                value="",
+                type="password",
+                placeholder="Enter API key",
+                key="azure_openai_api_key_override_v2",
+            )
+        else:
+            openai_key_input = ""
+            st.caption("Azure OpenAI API key is loaded from .env.")
         deployment_name = st.text_input("Deployment Name", value=env_openai.deployment_name)
         openai_api_version = st.text_input("Azure OpenAI API Version", value=env_openai.api_version)
 
         with st.expander("Content Understanding", expanded=True):
             content_endpoint = st.text_input("Content Understanding Endpoint", value=env_content.endpoint)
-            content_key_input = st.text_input(
-                "Content Understanding Key",
-                value="",
-                type="password",
-                placeholder="Loaded from .env" if env_content.key else "Optional key",
-                help="Leave blank to use CONTENTUNDERSTANDING_KEY from .env or DefaultAzureCredential.",
+            use_content_key_override = st.toggle(
+                "Manual Content Understanding key override",
+                value=False,
+                help="Keep this off to use CONTENTUNDERSTANDING_KEY from .env or DefaultAzureCredential.",
+                key="manual_content_key_override_v2",
             )
+            if use_content_key_override:
+                content_key_input = st.text_input(
+                    "Content Understanding Key Override",
+                    value="",
+                    type="password",
+                    placeholder="Optional key",
+                    key="content_understanding_key_override_v2",
+                )
+            else:
+                content_key_input = ""
+                if env_content.key:
+                    st.caption("Content Understanding key is loaded from .env.")
+                else:
+                    st.caption("Content Understanding key is blank; DefaultAzureCredential will be used.")
             analyzer_id = st.text_input("Analyzer ID", value=env_content.analyzer_id)
             content_api_version = st.text_input("Content Understanding API Version", value=env_content.api_version)
 
